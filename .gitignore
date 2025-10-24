@@ -205,3 +205,55 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Output files
+urls.csv
+*.csv
+urls.txt
+*.txt
+
+# Extracted content
+extracted_content/
+*.json
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
+
