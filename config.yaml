@@ -1,10 +1,9 @@
 content_extraction:
   max_retries: 5
   parallel_workers: 5
-  timeout_seconds: 30
 crawling:
   max_depth: 3
-  max_urls_per_site: 3
+  max_urls_per_site: 100
 output:
   content_dir: extracted_content
   final_data: company_data.json

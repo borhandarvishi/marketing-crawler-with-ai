@@ -162,6 +162,12 @@ def run_pipeline_async(job_id, url, config):
             useful_urls = [row['url'] for row in reader if row.get('isUseful', '').strip().lower() == 'true']
         
         if useful_urls:
+            # Check cancellation before starting intensive processing
+            if job_cancellation.get(job_id):
+                tracker.log("❌ Job cancelled by user", 'error')
+                tracker.complete(success=False)
+                return
+            
             tracker.log(f"   🔄 Pipeline mode: Extract → Process simultaneously")
             tracker.log(f"   📄 Content Extraction: {len(useful_urls)} pages")
             tracker.log(f"   🤖 AI Processing: As files arrive...")
@@ -172,16 +178,22 @@ def run_pipeline_async(job_id, url, config):
             # Start AI consumer in separate thread (processes files as they arrive)
             consumer_thread = Thread(
                 target=workflow_engine.extract_values_from_queue,
-                args=(file_queue, project_dir)
+                args=(file_queue, project_dir, job_id, job_cancellation, tracker)
             )
             consumer_thread.daemon = True
             consumer_thread.start()
             
             # Run content extractor (producer) - feeds files to queue
-            workflow_engine.extract_content(urls_file, folders['content'], project_dir, file_queue)
+            workflow_engine.extract_content(urls_file, folders['content'], project_dir, file_queue, job_id, job_cancellation, tracker)
             
             # Wait for AI processing to complete
             consumer_thread.join()
+            
+            # Check if cancelled during processing
+            if job_cancellation.get(job_id):
+                tracker.log("❌ Job cancelled by user", 'error')
+                tracker.complete(success=False)
+                return
             
             tracker.update_step(5)
             tracker.log(f"   ✓ Pipeline complete! Content extracted & AI processed in parallel")
@@ -531,7 +543,7 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     # Use fixed port from config or default to 5000
-    port = 5000
+    port = 5001
     
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗

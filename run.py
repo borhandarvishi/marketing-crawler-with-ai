@@ -212,7 +212,7 @@ class WorkflowEngine:
             api_key=os.getenv('OPENAI_API_KEY')
         )
     
-    def extract_content(self, urls_file, content_dir, project_dir, file_queue=None):
+    def extract_content(self, urls_file, content_dir, project_dir, file_queue=None, job_id=None, job_cancellation=None, tracker=None):
         """Extract content from useful URLs (Producer for pipeline)"""
         # Read useful URLs
         useful_urls = []
@@ -223,12 +223,20 @@ class WorkflowEngine:
                     useful_urls.append(row['url'])
         
         if not useful_urls:
-            print("   ⚠️  No useful URLs to extract")
+            msg = "   ⚠️  No useful URLs to extract"
+            if tracker:
+                tracker.log(msg)
+            else:
+                print(msg)
             if file_queue:
                 file_queue.put(None)  # Signal completion
             return
         
-        print(f"   Extracting content from {len(useful_urls)} useful URLs...")
+        msg = f"   Extracting content from {len(useful_urls)} useful URLs..."
+        if tracker:
+            tracker.log(msg)
+        else:
+            print(msg)
         
         # Extract with retry logic
         extractor = ContentExtractor(
@@ -241,7 +249,23 @@ class WorkflowEngine:
         failed_urls = []
         
         for idx, url in enumerate(useful_urls, 1):
-            print(f"   [{idx}/{len(useful_urls)}] {url}")
+            # Check for cancellation
+            if job_id and job_cancellation and job_cancellation.get(job_id):
+                msg = "   ⚠️  Content extraction cancelled by user"
+                if tracker:
+                    tracker.log(msg)
+                else:
+                    print(msg)
+                if file_queue:
+                    file_queue.put(None)  # Signal completion
+                return
+            
+            msg = f"   [{idx}/{len(useful_urls)}] {url}"
+            if tracker:
+                tracker.log(msg)
+            else:
+                print(msg)
+            
             data = extractor.extract_clean_content(url)
             
             if data['extraction_successful']:
@@ -256,7 +280,11 @@ class WorkflowEngine:
             else:
                 failed_urls.append({'url': url, 'error': data.get('error', 'Unknown')})
         
-        print(f"   ✓ Extracted {successful}/{len(useful_urls)} pages")
+        msg = f"   ✓ Extracted {successful}/{len(useful_urls)} pages"
+        if tracker:
+            tracker.log(msg)
+        else:
+            print(msg)
         
         # Signal completion to consumer
         if file_queue:
@@ -319,7 +347,7 @@ class WorkflowEngine:
         
         print(f"   ✓ Company data saved to: 3_company_data.json")
     
-    def extract_values_from_queue(self, file_queue, project_dir):
+    def extract_values_from_queue(self, file_queue, project_dir, job_id=None, job_cancellation=None, tracker=None):
         """Extract company data from files as they arrive (Consumer for pipeline)"""
         from value_extraction import (
             get_empty_structure,
@@ -328,7 +356,11 @@ class WorkflowEngine:
             save_output
         )
         
-        print("   🤖 AI Value Extraction running in parallel...")
+        msg = "   🤖 AI Value Extraction running in parallel..."
+        if tracker:
+            tracker.log(msg)
+        else:
+            print(msg)
         
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -345,6 +377,30 @@ class WorkflowEngine:
         
         # Process files as they arrive
         while True:
+            # Check for cancellation
+            if job_id and job_cancellation and job_cancellation.get(job_id):
+                msg = "   ⚠️  AI processing cancelled by user"
+                if tracker:
+                    tracker.log(msg)
+                else:
+                    print(msg)
+                # Drain the queue
+                while not file_queue.empty():
+                    try:
+                        file_queue.get_nowait()
+                        file_queue.task_done()
+                    except:
+                        break
+                # Save partial results
+                if file_count > 0:
+                    save_output(accumulated_data, output_file)
+                    msg = f"   ✓ Partial results saved ({file_count} files processed)"
+                    if tracker:
+                        tracker.log(msg)
+                    else:
+                        print(msg)
+                return
+            
             filepath = file_queue.get()
             
             # None signals completion
@@ -353,7 +409,11 @@ class WorkflowEngine:
             
             file_count += 1
             filename = os.path.basename(filepath)
-            print(f"   [{file_count}] Processing {filename}")
+            msg = f"   [{file_count}] Processing {filename}"
+            if tracker:
+                tracker.log(msg)
+            else:
+                print(msg)
             
             # Use original extract_value_from_file function
             accumulated_data = extract_value_from_file(
@@ -370,7 +430,11 @@ class WorkflowEngine:
         
         # Save final output
         save_output(accumulated_data, output_file)
-        print(f"   ✓ Processed {file_count} files - Company data saved")
+        msg = f"   ✓ Processed {file_count} files - Company data saved"
+        if tracker:
+            tracker.log(msg)
+        else:
+            print(msg)
     
     def sanitize_filename(self, url):
         """Create safe filename from URL"""
